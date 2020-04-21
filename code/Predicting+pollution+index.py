@@ -154,7 +154,7 @@ df_lin = pd.DataFrame({'RMAE':rmse},index=['Original','Normalized','Standardized
 
 #Ridge Regression
 rmse=[]
-ridge=Ridge(max_iter=1000,alpha=1.0)
+ridge=Ridge(max_iter=200,alpha=5.0)
 #ridge.fit(X_train,y_train)
 #ridge_pred = ridge.predict(X_test)
 #ridge_pred = np.round(ridge_pred)
@@ -177,7 +177,9 @@ df_ridge = pd.DataFrame({'RMAE':rmse},index=['Original','Normalized','Standardiz
 rmse=[]
 #max_iter=300 91.51447
 #275 91.51447
-lasso = Lasso(alpha=0.5,max_iter=300) #91.51447
+#2,200 91.51466
+#1.18,200 91.5151
+lasso = Lasso(alpha=1.18,max_iter=200) 
 #lasso.fit(X_train,y_train)
 #lasso_pred = lasso.predict(X_test)
 #lasso_pred = np.round(lasso_pred)
@@ -194,15 +196,6 @@ df_lasso = pd.DataFrame({'RMAE':rmse},index=['Original','Normalized','Standardiz
 
 
 
-
-
-
-pipe2 = Pipeline([('poly', PolynomialFeatures()),('fit', Lasso())])
-lasso_poly = Pipeline([('poly', PolynomialFeatures()), ('model', Lasso(alpha=3.0,max_iter=3000))])
-lasso_poly.fit(X_train,y_train)
-lasso_poly_pred = lasso_poly.predict(X_test)
-lasso_poly_pred = np.round(lasso_poly_pred)
-
 enet = ElasticNet(alpha=0.01)
 enet.fit(X_train,y_train)
 enet_pred = enet.predict(X_test)
@@ -210,21 +203,31 @@ enet_pred = np.round(enet_pred)
 
 
 #Regression with Tree models 
-#91.51257 - n_estimators = 100
+#XGBoost
+#91.51399 - n_estimators = 377,max_depth=1, learning_rate=0.0367,gamma=0.22,min_child_weight=4.44,colsample_bytree=1
 #91.51323 - n_estimators = 50
 #91.51353 - n_estimatiors = 40
 #91.51226 - n_estimators = 35
-#91.49567 - n_estimators = 25
-#90.98188 - n_estimators = 10
 #91.51265 Average of xgb(40) and lasso()
 #91.51389 0.8 and 0.2
-model_xgb = xgb.XGBRegressor(objective = 'reg:squarederror',n_estimators=40, max_depth=1, learning_rate=0.1) 
-model_xgb.fit(X_train,y_train)
-xgb_pred = model_xgb.predict(X_test)
-xgb_pred = np.round(xgb_pred)
+rmse=[]
+model_xgb = xgb.XGBRegressor(objective = 'reg:squarederror',n_estimators=377, max_depth=1, learning_rate=0.0367,gamma=0.22,min_child_weight=4.44,colsample_bytree=1) 
+#model_xgb.fit(X_train,y_train)
+#xgb_pred = model_xgb.predict(X_test)
+#xgb_pred = np.round(xgb_pred)
+for i in range(len(trainX)):
+    
+    # fit
+    model_xgb.fit(trainX[i],y_train)
+    # predict
+    pred = np.round(model_xgb.predict(testX[i]))
+    # RMSE
+    rmse.append(100-np.sqrt(mean_absolute_error(y_test,pred)))
+    
+df_xgb = pd.DataFrame({'RMAE':rmse},index=['Original','Normalized','Standardized'])
 
-test_consol = pd.DataFrame({'lasso':lasso_pred,'xgb':xgb_pred})
-test_consol['average'] =np.round((0.8*test_consol['lasso']+0.2*test_consol['xgb']))
+
+
 
 
 #Evaluation of Metrics
@@ -237,16 +240,48 @@ print("Combined:",100-np.sqrt(mean_absolute_error(test_consol['average'],y_test)
 print("lasso_regression:" ,100-np.sqrt(mean_absolute_error(lasso_poly_pred,y_test)))
 
 
-#HyperParameter Tuning
-max_iter = [300,500,1000,2000]
-alpha = [0.5,1.0,2,0,3.0,4.0,2.5,3.5]
+#HyperParameter Tuning for Lasso & Ridge
+max_iter = [int(x) for x in np.linspace(start =200,stop=2000,num=10)]
+alpha = [x for x in np.linspace(0.1,5,num=10)]
 param_grid = dict(max_iter=max_iter,alpha=alpha)
-import time
-grid = GridSearchCV(estimator=lasso,param_grid = param_grid,cv=3,n_jobs=-1)
-start_time = time.time()
+grid = GridSearchCV(estimator=lasso,param_grid = param_grid,cv=4,n_jobs=-1)
 grid_result = grid.fit(X_train_stand,y_train)
 print(grid_result.best_params_)
 print(grid_result.best_score_)
+
+
+#HyperParameter Tuning for Xgboost
+n_estimators = [int(x) for x in np.linspace(start=200, stop=1000, num=10)]
+max_depth = [int(x) for x in np.linspace(1,20, num=10)]
+gamma = [x for x in np.linspace(0, 0.4, num=10)]
+learning_rate = [float(x) for x in np.linspace(0.005, 0.1, num=10)]
+min_child_weight = [float(x) for x in np.linspace(0, 10, num=10)]
+colsample_bytree = [0.3, 0.5, 0.7, 1]
+
+random_grid = {'n_estimators': n_estimators,
+               'max_depth': max_depth,
+               'learning_rate':learning_rate,
+               'gamma':gamma,
+               'min_child_weight':min_child_weight,
+               'colsample_bytree':colsample_bytree}
+model_xgb = xgb.XGBRegressor(random_state=1, objective='reg:squarederror', no_omp=1) #singlethread
+
+xgb_random = RandomizedSearchCV(estimator=model_xgb,#swap in with whatever model you're using
+                                param_distributions=random_grid,
+                                scoring='neg_mean_absolute_error',
+                                n_iter=10,
+                                cv=4,
+                                n_jobs=-1,
+                                verbose=10
+                                )
+
+result=xgb_random.fit(X_train_stand, y_train)
+params = result.best_params_
+params = result.best_score_
+y_pred = xgb_random.predict(X_test)
+print(f"MSE: {mean_squared_error(y_test, y_pred)}")
+
+
 
 
 ######TEST DATA
@@ -320,9 +355,9 @@ test_x_norm.describe()
 #PREDICTION
 pred_test_x_lin = lin.predict(test_x)
 pred_test_x_ridge = ridge.predict(test_x)
-pred_test_x_lasso = lasso.predict(test_x_norm)
+pred_test_x_lasso = lasso.predict(test_x_stand)
 pred_test_x_enet = enet.predict(test_x)
-pred_test_x_xgb = model_xgb.predict(test_x)
+pred_test_x_xgb = model_xgb.predict(test_x_norm)
 
 pred_test_x_lin = np.round(pred_test_x_lin)
 pred_test_x_ridge = np.round(pred_test_x_ridge)
@@ -330,13 +365,15 @@ pred_test_x_lasso = np.round(pred_test_x_lasso)
 pred_test_x_enet = np.round(pred_test_x_enet)
 pred_test_x_xgb = np.round(pred_test_x_xgb )
 
-consolidated = pd.DataFrame({'ridge':pred_test_x_ridge,'lasso':pred_test_x_lasso,'xgb':pred_test_x_xgb})
+
+#Combining XGB and lasso - 91.5151
+consolidated = pd.DataFrame({'lasso':pred_test_x_lasso,'xgb':pred_test_x_xgb})
 
 consolidated['results'] = (0.8*consolidated['lasso'] + 0.2*consolidated['xgb'])
 results = np.round(consolidated['results'])
-submission_file = pd.DataFrame({'date_time':test_data['date_time'],'air_pollution_index':pred_test_x_lasso})
+submission_file = pd.DataFrame({'date_time':test_data['date_time'],'air_pollution_index':results})
 
-np.mean(pred_test_x_lasso)
+np.mean(results)
 
 submission_file.to_csv('output/submission_file.csv')
     
