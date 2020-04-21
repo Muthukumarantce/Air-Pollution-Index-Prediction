@@ -60,7 +60,6 @@ plt.hist(train_data['visibility_in_miles'])
 plt.hist(train_data['dew_point'])
 #Both Visibility in miles and Dew points are Equal in Values. One can be ignored
 train_data= train_data.drop(['dew_point'],axis=1)
-
 plt.hist(train_data['temperature'])
 plt.hist(train_data['rain_p_h'])
 plt.hist(train_data['snow_p_h'])
@@ -79,7 +78,7 @@ X_train,X_test,y_train,y_test=train_test_split(X,y,random_state=20,test_size=0.2
 
 
 X.describe()
-#Feature Scaling
+#Feature Scaling - Approach here is to both normalize and Scaling the data
 
 ##Apply standardization to numerical features
 num_cols = ['humidity','wind_speed','wind_direction','visibility_in_miles','temperature','rain_p_h','snow_p_h','clouds_all','traffic_volume','year','month','day','dayofweek','hour']
@@ -119,87 +118,55 @@ for i in num_cols:
 
 
 X_train_norm.describe()
-#Correlation
-import seaborn as sns
-corrmat = X_train_norm.corr()
-g=sns.heatmap(corrmat)
-
-topcorr_features = corrmat.index[abs(corrmat['air_pollution_index']>0.5)]
-
 
 # raw, normalized and standardized training and testing data
 trainX = [X_train, X_train_norm, X_train_stand]
 testX = [X_test, X_test_norm, X_test_stand]
+
+
+def runmodel(model,train_data,test_data):
+     rmae=[]
+     for i in range(len(train_data)):
+         #fit
+         model.fit(train_data[i],y_train)
+         
+         #predict
+         pred=np.round(model.predict(test_data[i]))
+         
+         #RMSE
+         rmae.append(100-np.sqrt(mean_absolute_error(y_test,pred)))
+         
+         return rmae
+         
 #Building the model
 #Linear Models
-
-#Linear Regression
-rmse=[]
-lin = LinearRegression()
-#lin.fit(X_train,y_train)
-#lin_pred=lin.predict(X_test)
-#lin_pred = np.round(lin_pred)
-# model fitting and measuring RMAE
-for i in range(len(trainX)):
-    
-    # fit
-    lin.fit(trainX[i],y_train)
-    # predict
-    pred = np.round(lin.predict(testX[i]))
-    # RMSE
-    rmse.append(100-np.sqrt(mean_absolute_error(y_test,pred)))
-    
-df_lin = pd.DataFrame({'RMAE':rmse},index=['Original','Normalized','Standardized'])
+#Linear Regression    
+lin = LinearRegression()   
+rmae_lin =runmodel(lin,trainX,testX)
+df_lin = pd.DataFrame({"RMAE":rmae_lin},index=['Original','Normalized','Standardized'])
 
 
 #Ridge Regression
-rmse=[]
 ridge=Ridge(max_iter=200,alpha=5.0)
-#ridge.fit(X_train,y_train)
-#ridge_pred = ridge.predict(X_test)
-#ridge_pred = np.round(ridge_pred)
-# model fitting and measuring RMAE
-for i in range(len(trainX)):
-    
-    # fit
-    ridge.fit(trainX[i],y_train)
-    # predict
-    pred = np.round(ridge.predict(testX[i]))
-    # RMSE
-    rmse.append(100-np.sqrt(mean_absolute_error(y_test,pred)))
-    
-df_ridge = pd.DataFrame({'RMAE':rmse},index=['Original','Normalized','Standardized'])
-
-
+rmae_ridge = runmodel(ridge,trainX,testX)
+df_ridge = pd.DataFrame({"RMAE":rmae_ridge},index=['Original','Normalized','Standardized'])
 
 
 #LASSO Regression
-rmse=[]
 #max_iter=300 91.51447
 #275 91.51447
 #2,200 91.51466
 #1.18,200 91.5151
 lasso = Lasso(alpha=1.18,max_iter=200) 
-#lasso.fit(X_train,y_train)
-#lasso_pred = lasso.predict(X_test)
-#lasso_pred = np.round(lasso_pred)
-for i in range(len(trainX)):
-    
-    # fit
-    lasso.fit(trainX[i],y_train)
-    # predict
-    pred = np.round(lasso.predict(testX[i]))
-    # RMSE
-    rmse.append(100-np.sqrt(mean_absolute_error(y_test,pred)))
-    
-df_lasso = pd.DataFrame({'RMAE':rmse},index=['Original','Normalized','Standardized'])
+rmae_lasso = runmodel(lasso,trainX,testX)
+df_lasso = pd.DataFrame({'RMAE':rmae_lasso},index=['Original','Normalized','Standardized'])
 
 
+#ElasticNetRegression
+enet = ElasticNet(alpha=0.64,max_iter=200,l1_ratio=1.73)
+rmae_enet = runmodel(enet,trainX,testX)
+df_enet = pd.DataFrame({'RMAE':rmae_enet},index=['Original','Normalized','Standardized'])
 
-enet = ElasticNet(alpha=0.01)
-enet.fit(X_train,y_train)
-enet_pred = enet.predict(X_test)
-enet_pred = np.round(enet_pred)
 
 
 #Regression with Tree models 
@@ -210,47 +177,27 @@ enet_pred = np.round(enet_pred)
 #91.51226 - n_estimators = 35
 #91.51265 Average of xgb(40) and lasso()
 #91.51389 0.8 and 0.2
-rmse=[]
 model_xgb = xgb.XGBRegressor(objective = 'reg:squarederror',n_estimators=377, max_depth=1, learning_rate=0.0367,gamma=0.22,min_child_weight=4.44,colsample_bytree=1) 
 #model_xgb.fit(X_train,y_train)
 #xgb_pred = model_xgb.predict(X_test)
 #xgb_pred = np.round(xgb_pred)
-for i in range(len(trainX)):
-    
-    # fit
-    model_xgb.fit(trainX[i],y_train)
-    # predict
-    pred = np.round(model_xgb.predict(testX[i]))
-    # RMSE
-    rmse.append(100-np.sqrt(mean_absolute_error(y_test,pred)))
-    
-df_xgb = pd.DataFrame({'RMAE':rmse},index=['Original','Normalized','Standardized'])
-
-
-
-
-
-#Evaluation of Metrics
-print("linear_regression:",np.sqrt(mean_absolute_error(lin_pred,y_test)))
-print("ridge_regression:", np.sqrt(mean_absolute_error(ridge_pred,y_test)))
-print("lasso_regression:" ,100-np.sqrt(mean_absolute_error(lasso_pred,y_test)))
-print("Elastic_regression:" ,np.sqrt(mean_absolute_error(enet_pred,y_test)))
-print("XGB Regression:", 100-np.sqrt(mean_absolute_error(xgb_pred,y_test)))
-print("Combined:",100-np.sqrt(mean_absolute_error(test_consol['average'],y_test)))
-print("lasso_regression:" ,100-np.sqrt(mean_absolute_error(lasso_poly_pred,y_test)))
+rmae_xgb= runmodel(model_xgb,trainX,testX)
+df_xgb = pd.DataFrame({'RMAE':rmae_xgb},index=['Original','Normalized','Standardized'])
 
 
 #HyperParameter Tuning for Lasso & Ridge
 max_iter = [int(x) for x in np.linspace(start =200,stop=2000,num=10)]
 alpha = [x for x in np.linspace(0.1,5,num=10)]
-param_grid = dict(max_iter=max_iter,alpha=alpha)
-grid = GridSearchCV(estimator=lasso,param_grid = param_grid,cv=4,n_jobs=-1)
+l1_ratio=[x for x in np.linspace(0.1,5,num=10)]
+param_grid = dict(max_iter=max_iter,alpha=alpha,l1_ratio=l1_ratio)
+grid = GridSearchCV(estimator=enet,param_grid = param_grid,cv=4,n_jobs=-1)
 grid_result = grid.fit(X_train_stand,y_train)
 print(grid_result.best_params_)
 print(grid_result.best_score_)
 
 
 #HyperParameter Tuning for Xgboost
+#RandomSearch has been used for XGB for Performance as GridSearch with more gridspace ruins the memory
 n_estimators = [int(x) for x in np.linspace(start=200, stop=1000, num=10)]
 max_depth = [int(x) for x in np.linspace(1,20, num=10)]
 gamma = [x for x in np.linspace(0, 0.4, num=10)]
@@ -278,8 +225,6 @@ xgb_random = RandomizedSearchCV(estimator=model_xgb,#swap in with whatever model
 result=xgb_random.fit(X_train_stand, y_train)
 params = result.best_params_
 params = result.best_score_
-y_pred = xgb_random.predict(X_test)
-print(f"MSE: {mean_squared_error(y_test, y_pred)}")
 
 
 
@@ -297,11 +242,8 @@ test_data=pd.concat([test_data,df3,df4],axis=1)
 #Weather_squall is not present in test data
 test_data=test_data.drop('Weather_Squall',axis=1)
 
-
-test_data['date_time'] = pd.to_datetime(test_data['date_time'])
-
-
 #Date Feature Engineering
+test_data['date_time'] = pd.to_datetime(test_data['date_time'])
 test_data['year'] = pd.DatetimeIndex(test_data['date_time']).year
 test_data['month'] = pd.DatetimeIndex(test_data['date_time']).month
 test_data['day'] = pd.DatetimeIndex(test_data['date_time']).day
@@ -349,14 +291,11 @@ for i in num_cols:
     test_x_norm[i] = norm.transform(test_x_norm[[i]])
 
 
-test_x_norm.describe()
-
-
 #PREDICTION
 pred_test_x_lin = lin.predict(test_x)
 pred_test_x_ridge = ridge.predict(test_x)
 pred_test_x_lasso = lasso.predict(test_x_stand)
-pred_test_x_enet = enet.predict(test_x)
+pred_test_x_enet = enet.predict(test_x_stand)
 pred_test_x_xgb = model_xgb.predict(test_x_norm)
 
 pred_test_x_lin = np.round(pred_test_x_lin)
@@ -366,10 +305,13 @@ pred_test_x_enet = np.round(pred_test_x_enet)
 pred_test_x_xgb = np.round(pred_test_x_xgb )
 
 
-#Combining XGB and lasso - 91.5151
-consolidated = pd.DataFrame({'lasso':pred_test_x_lasso,'xgb':pred_test_x_xgb})
+#Combining XGB and lasso - 91.51514 (0.2 & 0.8)
+#Combining XGB and lasso - 91.51522 (0.4 & 0.6)
+#Combining XGB and lasso - 91.51522 (0.5 & 0.5)
+#combining XGB,lasso and enet - 91.51514 (0.25,0.25,0.5)
+consolidated = pd.DataFrame({'enet':pred_test_x_enet,'lasso':pred_test_x_lasso,'xgb':pred_test_x_xgb})
 
-consolidated['results'] = (0.8*consolidated['lasso'] + 0.2*consolidated['xgb'])
+consolidated['results'] = (0.6*consolidated['lasso'] + 0.3*consolidated['xgb']+0.1*consolidated['enet'])
 results = np.round(consolidated['results'])
 submission_file = pd.DataFrame({'date_time':test_data['date_time'],'air_pollution_index':results})
 
