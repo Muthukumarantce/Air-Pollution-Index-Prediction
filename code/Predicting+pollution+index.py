@@ -146,7 +146,7 @@ df_lin = pd.DataFrame({"RMAE":rmae_lin},index=['Original','Normalized','Standard
 
 
 #Ridge Regression
-ridge=Ridge(max_iter=200,alpha=5.0)
+ridge=Ridge(max_iter=50,alpha=5.0)
 rmae_ridge = runmodel(ridge,trainX,testX)
 df_ridge = pd.DataFrame({"RMAE":rmae_ridge},index=['Original','Normalized','Standardized'])
 
@@ -157,7 +157,7 @@ df_ridge = pd.DataFrame({"RMAE":rmae_ridge},index=['Original','Normalized','Stan
 #2,200 91.51466
 #1.18,200 91.5151
 #1.18,50 91.51514
-lasso = Lasso(alpha=1.18,max_iter=50) 
+lasso = Lasso(alpha=1.20,max_iter=20) 
 rmae_lasso = runmodel(lasso,trainX,testX)
 df_lasso = pd.DataFrame({'RMAE':rmae_lasso},index=['Original','Normalized','Standardized'])
 
@@ -185,8 +185,8 @@ df_xgb = pd.DataFrame({'RMAE':rmae_xgb},index=['Original','Normalized','Standard
 
 
 #HyperParameter Tuning for Lasso & Ridge
-max_iter = [int(x) for x in np.linspace(start =50,stop=2000,num=10)]
-alpha = [x for x in np.linspace(0.1,5,num=10)]
+max_iter = [int(x) for x in np.linspace(start =20,stop=2000,num=10)]
+alpha = [x for x in np.linspace(0.1,10,num=10)]
 tol=[x for x in np.linspace(0.0001,5,num=10)]
 param_grid = dict(max_iter=max_iter,alpha=alpha,tol=tol)
 grid = GridSearchCV(estimator=lasso,param_grid = param_grid,cv=4,n_jobs=-1)
@@ -238,8 +238,7 @@ test_data=test_data.drop(["is_holiday","weather_type"],axis=1)
 df3.info()
 df4.info()
 test_data=pd.concat([test_data,df3,df4],axis=1)
-#Weather_squall is not present in test data
-test_data=test_data.drop('Weather_Squall',axis=1)
+
 
 #Date Feature Engineering
 test_data['date_time'] = pd.to_datetime(test_data['date_time'])
@@ -295,7 +294,7 @@ for i in num_cols:
 pred_test_x_lin = lin.predict(test_x)
 pred_test_x_ridge = ridge.predict(test_x_stand)
 pred_test_x_lasso = lasso.predict(test_x_stand)
-pred_test_x_enet = enet.predict(test_x_stand)
+pred_test_x_enet = enet.predict(test_x_norm)
 pred_test_x_xgb = model_xgb.predict(test_x_stand)
 
 pred_test_x_lin = np.round(pred_test_x_lin)
@@ -313,11 +312,11 @@ pred_test_x_xgb = np.round(pred_test_x_xgb )
 #0.9 Lasso & 0.1 enet 91.51514
 consolidated = pd.DataFrame({'ridge':pred_test_x_ridge,'enet':pred_test_x_enet,'lasso':pred_test_x_lasso,'xgb':pred_test_x_xgb})
 
-consolidated['results'] = (0.6*consolidated['lasso'] + 0.4*consolidated['enet'] )
+consolidated['results'] = (consolidated['lasso'] + consolidated['xgb'] +consolidated['enet'])/3
 results = np.round(consolidated['results'])
 submission_file = pd.DataFrame({'date_time':test_data['date_time'],'air_pollution_index':results})
 
-np.mean(results)
+np.mean(pred_test_x_lasso)
 
 submission_file.to_csv('output/submission_file.csv')
 
