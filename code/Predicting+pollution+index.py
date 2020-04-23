@@ -3,14 +3,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error,mean_squared_error,r2_score
+from sklearn.metrics import mean_absolute_error
 from sklearn.linear_model import LinearRegression, Ridge,Lasso,ElasticNet
 from sklearn.model_selection import GridSearchCV,RandomizedSearchCV
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import MinMaxScaler,StandardScaler,PolynomialFeatures
-from sklearn.feature_selection import SelectKBest, chi2, RFE, RFECV
+from sklearn.preprocessing import MinMaxScaler,StandardScaler
 import xgboost as xgb
-import statsmodels.api as sm
+
 
 
 #Reading Input data
@@ -124,6 +122,7 @@ trainX = [X_train, X_train_norm, X_train_stand]
 testX = [X_test, X_test_norm, X_test_stand]
 
 
+#Function for Model fitting and metrics evaluation
 def runmodel(model,train_data,test_data):
      rmae=[]
      for i in range(len(train_data)):
@@ -157,16 +156,16 @@ df_ridge = pd.DataFrame({"RMAE":rmae_ridge},index=['Original','Normalized','Stan
 #275 91.51447
 #2,200 91.51466
 #1.18,200 91.5151
-lasso = Lasso(alpha=1.18,max_iter=200) 
+#1.18,50 91.51514
+lasso = Lasso(alpha=1.18,max_iter=50) 
 rmae_lasso = runmodel(lasso,trainX,testX)
 df_lasso = pd.DataFrame({'RMAE':rmae_lasso},index=['Original','Normalized','Standardized'])
 
 
 #ElasticNetRegression
-enet = ElasticNet(alpha=0.64,max_iter=200,l1_ratio=1.73)
+enet = ElasticNet(alpha=1.18,max_iter=50,l1_ratio=1.73)
 rmae_enet = runmodel(enet,trainX,testX)
 df_enet = pd.DataFrame({'RMAE':rmae_enet},index=['Original','Normalized','Standardized'])
-
 
 
 #Regression with Tree models 
@@ -186,11 +185,11 @@ df_xgb = pd.DataFrame({'RMAE':rmae_xgb},index=['Original','Normalized','Standard
 
 
 #HyperParameter Tuning for Lasso & Ridge
-max_iter = [int(x) for x in np.linspace(start =200,stop=2000,num=10)]
+max_iter = [int(x) for x in np.linspace(start =50,stop=2000,num=10)]
 alpha = [x for x in np.linspace(0.1,5,num=10)]
-l1_ratio=[x for x in np.linspace(0.1,5,num=10)]
-param_grid = dict(max_iter=max_iter,alpha=alpha,l1_ratio=l1_ratio)
-grid = GridSearchCV(estimator=enet,param_grid = param_grid,cv=4,n_jobs=-1)
+tol=[x for x in np.linspace(0.0001,5,num=10)]
+param_grid = dict(max_iter=max_iter,alpha=alpha,tol=tol)
+grid = GridSearchCV(estimator=lasso,param_grid = param_grid,cv=4,n_jobs=-1)
 grid_result = grid.fit(X_train_stand,y_train)
 print(grid_result.best_params_)
 print(grid_result.best_score_)
@@ -252,6 +251,7 @@ test_data['hour'] = pd.DatetimeIndex(test_data['date_time']).hour
 test_x=test_data.drop(['date_time','dew_point'],axis=1)
 
 
+
 #Feature Scaling
 
 ##Apply standardization to numerical features
@@ -291,12 +291,12 @@ for i in num_cols:
     test_x_norm[i] = norm.transform(test_x_norm[[i]])
 
 
-#PREDICTION
+#Test Data Prediction
 pred_test_x_lin = lin.predict(test_x)
-pred_test_x_ridge = ridge.predict(test_x)
+pred_test_x_ridge = ridge.predict(test_x_stand)
 pred_test_x_lasso = lasso.predict(test_x_stand)
 pred_test_x_enet = enet.predict(test_x_stand)
-pred_test_x_xgb = model_xgb.predict(test_x_norm)
+pred_test_x_xgb = model_xgb.predict(test_x_stand)
 
 pred_test_x_lin = np.round(pred_test_x_lin)
 pred_test_x_ridge = np.round(pred_test_x_ridge)
@@ -309,33 +309,15 @@ pred_test_x_xgb = np.round(pred_test_x_xgb )
 #Combining XGB and lasso - 91.51522 (0.4 & 0.6)
 #Combining XGB and lasso - 91.51522 (0.5 & 0.5)
 #combining XGB,lasso and enet - 91.51514 (0.25,0.25,0.5)
-consolidated = pd.DataFrame({'enet':pred_test_x_enet,'lasso':pred_test_x_lasso,'xgb':pred_test_x_xgb})
+#Enet - 91.51518
+#0.9 Lasso & 0.1 enet 91.51514
+consolidated = pd.DataFrame({'ridge':pred_test_x_ridge,'enet':pred_test_x_enet,'lasso':pred_test_x_lasso,'xgb':pred_test_x_xgb})
 
-consolidated['results'] = (0.6*consolidated['lasso'] + 0.3*consolidated['xgb']+0.1*consolidated['enet'])
+consolidated['results'] = (0.6*consolidated['lasso'] + 0.4*consolidated['enet'] )
 results = np.round(consolidated['results'])
 submission_file = pd.DataFrame({'date_time':test_data['date_time'],'air_pollution_index':results})
 
 np.mean(results)
 
 submission_file.to_csv('output/submission_file.csv')
-    
-
-#
-
-
-# In[17]:
-
-
-
-
-
-# In[23]:
-
-
-
-
-# In[26]:
-
-
-max(0,100-mean_absolute_error(y_pred,y_test))
 
